@@ -10,21 +10,15 @@ export default async function handler(req: Request) {
     url.pathname +
     url.search;
 
-  // ---- Clean request headers ----
+  // Clone headers safely
   const headers = new Headers(req.headers);
 
-  // Remove identifying / problematic headers
+  // Remove hop-by-hop / problematic headers
   headers.delete("host");
   headers.delete("connection");
   headers.delete("content-length");
   headers.delete("accept-encoding");
 
-  headers.delete("x-forwarded-for");
-  headers.delete("x-real-ip");
-  headers.delete("via");
-  headers.delete("cf-connecting-ip");
-
-  // ---- Send request upstream ----
   const upstream = await fetch(backendUrl, {
     method: req.method,
     headers,
@@ -35,21 +29,16 @@ export default async function handler(req: Request) {
     redirect: "manual",
   });
 
-  // ---- Build minimal response headers ----
-  const responseHeaders = new Headers();
+  // Keep all upstream headers
+  const responseHeaders = new Headers(upstream.headers);
 
-  // Only keep essential header
-  const contentType =
-    upstream.headers.get("content-type") || "application/octet-stream";
-  responseHeaders.set("content-type", contentType);
+  // Remove ONLY x-accel-buffering if present
+  responseHeaders.delete("x-accel-buffering");
 
-  // Optional: disable caching
+  // Keep your other headers
   responseHeaders.set("cache-control", "no-store");
-
-  // Optional: keep connection alive
   responseHeaders.set("connection", "keep-alive");
 
-  // ---- Return streamed response ----
   return new Response(upstream.body, {
     status: upstream.status,
     headers: responseHeaders,
